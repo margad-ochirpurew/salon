@@ -1,0 +1,248 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import Link from "next/link";
+
+const DAYS = [
+  { id: 1, name: "Даваа" },
+  { id: 2, name: "Мягмар" },
+  { id: 3, name: "Лхагва" },
+  { id: 4, name: "Пүрэв" },
+  { id: 5, name: "Баасан" },
+  { id: 6, name: "Бямба" },
+  { id: 0, name: "Ням" },
+];
+
+const ALL_HOURS = [
+  "10:00", "11:00", "12:00", "13:00", "14:00",
+  "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"
+];
+
+export default function BarberSchedulePage() {
+  const router = useRouter();
+  const [userId, setUserId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Ажиллах өдрүүд (0=Ням, 1=Даваа гэх мэт)
+  const [workingDays, setWorkingDays] = useState<number[]>([1, 2, 3, 4, 5, 6]);
+  const [startTime, setStartTime] = useState("10:00");
+  const [endTime, setEndTime] = useState("20:00");
+
+  // Цаг хаах (Blocked slots): жишээ нь: "2026-10-05_14:00"
+  const [blockDate, setBlockDate] = useState("2026-10-03");
+  const [blockedSlots, setBlockedSlots] = useState<string[]>([]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        router.replace("/admin/login");
+        return;
+      }
+      setUserId(user.uid);
+
+      try {
+        const barberRef = doc(db, "barbers", user.uid);
+        const snap = await getDoc(barberRef);
+        if (snap.exists()) {
+          const d = snap.data();
+          if (d.workingDays) setWorkingDays(d.workingDays);
+          if (d.startTime) setStartTime(d.startTime);
+          if (d.endTime) setEndTime(d.endTime);
+          if (d.blockedSlots) setBlockedSlots(d.blockedSlots);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  const toggleDay = (dayId: number) => {
+    if (workingDays.includes(dayId)) {
+      setWorkingDays(workingDays.filter((d) => d !== dayId));
+    } else {
+      setWorkingDays([...workingDays, dayId]);
+    }
+  };
+
+  const toggleBlockSlot = (time: string) => {
+    const slotKey = `${blockDate}_${time}`;
+    if (blockedSlots.includes(slotKey)) {
+      setBlockedSlots(blockedSlots.filter((k) => k !== slotKey));
+    } else {
+      setBlockedSlots([...blockedSlots, slotKey]);
+    }
+  };
+
+  const handleSaveSchedule = async () => {
+    if (!userId) return;
+    setSaving(true);
+    try {
+      await setDoc(
+        doc(db, "barbers", userId),
+        {
+          workingDays,
+          startTime,
+          endTime,
+          blockedSlots,
+        },
+        { merge: true }
+      );
+      alert("Ажлын хуваарь амжилттай хадгалагдлаа!");
+    } catch (e) {
+      console.error(e);
+      alert("Алдаа гарлаа!");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center">
+        <p className="text-amber-500 text-xs animate-pulse">Ачааллаж байна...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-white p-6 sm:p-12">
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center justify-between pb-6 border-b border-neutral-800 mb-8">
+          <div>
+            <h1 className="text-2xl font-black">2. Ажлын Хуваарь Зохицуулах</h1>
+            <p className="text-xs text-neutral-400 mt-1">
+              Ажиллах гарагууд, эхлэх/дуусах цаг болон захиалга авахгүй цагуудыг хаах
+            </p>
+          </div>
+          <Link
+            href="/admin"
+            className="text-xs bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-xl transition text-neutral-300"
+          >
+            ← Буцах
+          </Link>
+        </div>
+
+        <div className="space-y-8">
+          {/* 7 хоногийн ажиллах өдрүүд */}
+          <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl">
+            <h2 className="text-sm font-bold mb-1 text-white">🗓️ 7 хоногийн ажиллах өдрүүд</h2>
+            <p className="text-xs text-neutral-400 mb-4">
+              Та аль өдрүүдэд ажиллах вэ? Сонгосон өдрүүдэд л захиалга авна.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+              {DAYS.map((d) => {
+                const isActive = workingDays.includes(d.id);
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => toggleDay(d.id)}
+                    className={`py-3 px-2 rounded-xl text-xs font-bold border transition ${
+                      isActive
+                        ? "bg-amber-500 text-black border-amber-500"
+                        : "bg-neutral-800/80 border-neutral-700 text-neutral-400 hover:border-neutral-500"
+                    }`}
+                  >
+                    {d.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Ажиллах цагийн интервал */}
+          <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl">
+            <h2 className="text-sm font-bold mb-1 text-white">🕒 Ажиллах ерөнхий цаг</h2>
+            <p className="text-xs text-neutral-400 mb-4">
+              Өдөрт хэдээс хэдэн цагийн хооронд ажиллах вэ?
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-neutral-400 block mb-1">Эхлэх цаг:</label>
+                <select
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-xl px-3 py-2 text-sm focus:border-amber-500"
+                >
+                  {ALL_HOURS.map((h) => (
+                    <option key={h} value={h}>{h}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-neutral-400 block mb-1">Дуусах цаг:</label>
+                <select
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-xl px-3 py-2 text-sm focus:border-amber-500"
+                >
+                  {ALL_HOURS.map((h) => (
+                    <option key={h} value={h}>{h}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Зарим өдрийн зарим цагийг хаах */}
+          <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl">
+            <h2 className="text-sm font-bold mb-1 text-white">⛔ Тодорхой цагийг хаах (Блоклох)</h2>
+            <p className="text-xs text-neutral-400 mb-4">
+              Хэрэв хувийн ажилтай бол тухайн өдрийн хүссэн цаг дээрээ дарж үйлчлүүлэгч цаг захиалахаас сэргийлэн хаана.
+            </p>
+
+            <div className="mb-4 max-w-xs">
+              <label className="text-xs text-neutral-400 block mb-1">Огноо сонгох:</label>
+              <input
+                type="date"
+                value={blockDate}
+                onChange={(e) => setBlockDate(e.target.value)}
+                className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-xl px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+              {ALL_HOURS.map((hour) => {
+                const isBlocked = blockedSlots.includes(`${blockDate}_${hour}`);
+                return (
+                  <button
+                    key={hour}
+                    type="button"
+                    onClick={() => toggleBlockSlot(hour)}
+                    className={`py-2.5 rounded-xl text-xs font-semibold border transition ${
+                      isBlocked
+                        ? "bg-red-600/30 border-red-500 text-red-300 line-through"
+                        : "bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500"
+                    }`}
+                  >
+                    {hour} {isBlocked ? "(Хаасан)" : ""}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={handleSaveSchedule}
+              disabled={saving}
+              className="px-8 py-3 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs rounded-xl transition shadow-xl disabled:opacity-50"
+            >
+              {saving ? "Хадгалж байна..." : "Хуваарийг хадгалах ✓"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

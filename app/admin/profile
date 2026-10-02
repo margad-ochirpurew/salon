@@ -1,0 +1,296 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import Link from "next/link";
+
+export default function BarberProfilePage() {
+  const router = useRouter();
+  const [userId, setUserId] = useState("");
+  const [userEmail, setUserEmail] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Маягтын талбарууд
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  const [experience, setExperience] = useState("");
+  const [image, setImage] = useState("");
+  const [bio, setBio] = useState("");
+  const [specialtiesText, setSpecialtiesText] = useState("");
+  const [awardsText, setAwardsText] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        router.replace("/admin/login");
+        return;
+      }
+      setUserId(user.uid);
+      setUserEmail(user.email || "");
+
+      try {
+        const barberRef = doc(db, "barbers", user.uid);
+        const snap = await getDoc(barberRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          setName(data.name || "");
+          setRole(data.role || "");
+          setExperience(data.experience || "");
+          setImage(data.image || "");
+          setBio(data.bio || "");
+          setSpecialtiesText(data.specialties ? data.specialties.join(", ") : "");
+          setAwardsText(data.awards ? data.awards.join("\n") : "");
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  // Зургийг Drag & Drop эсвэл сонгох үед Base64 болгон хувиргах
+  const handleImageFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      alert("Зөвхөн зураг оруулна уу!");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImage(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleImageFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) return;
+
+    setSaving(true);
+    try {
+      const specialtiesArray = specialtiesText
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      const awardsArray = awardsText
+        .split("\n")
+        .map((a) => a.trim())
+        .filter((a) => a.length > 0);
+
+      await setDoc(
+        doc(db, "barbers", userId),
+        {
+          name: name.trim(),
+          role: role.trim(),
+          experience: experience.trim(),
+          image: image.trim(),
+          bio: bio.trim(),
+          specialties: specialtiesArray,
+          awards: awardsArray,
+          email: userEmail.toLowerCase(),
+        },
+        { merge: true }
+      );
+
+      alert("Профайл амжилттай хадгалагдлаа!");
+      router.push("/admin");
+    } catch (err) {
+      console.error(err);
+      alert("Хадгалахад алдаа гарлаа!");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center">
+        <p className="text-amber-500 text-xs animate-pulse">Ачааллаж байна...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-white p-6 sm:p-12">
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center justify-between pb-6 border-b border-neutral-800 mb-8">
+          <div>
+            <h1 className="text-2xl font-black">1. Миний Профайл Засах</h1>
+            <p className="text-xs text-neutral-400 mt-1">
+              Нүүр хуудасны каталог дээр харагдах таны танилцуулга
+            </p>
+          </div>
+          <Link
+            href="/admin"
+            className="text-xs bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 px-4 py-2 rounded-xl transition text-neutral-300"
+          >
+            ← Буцах
+          </Link>
+        </div>
+
+        <form onSubmit={handleSave} className="space-y-6">
+          {/* Зураг оруулах Drag & Drop хэсэг */}
+          <div>
+            <label className="block text-xs font-semibold text-neutral-300 mb-2">
+              Үсчний зураг (Drag & Drop эсвэл дарж сонгоно уу):
+            </label>
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-3xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center gap-3 relative ${
+                isDragging
+                  ? "border-amber-500 bg-amber-500/10"
+                  : "border-neutral-700 hover:border-neutral-500 bg-neutral-900/60"
+              }`}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => e.target.files && handleImageFile(e.target.files[0])}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              {image ? (
+                <div className="flex flex-col items-center gap-3">
+                  <img
+                    src={image}
+                    alt="Preview"
+                    className="w-28 h-28 object-cover rounded-2xl border-2 border-amber-500 shadow-lg"
+                  />
+                  <span className="text-xs text-neutral-400">
+                    Зургийг солих бол дарж эсвэл дахин чирж оруулна уу
+                  </span>
+                </div>
+              ) : (
+                <div className="py-4">
+                  <div className="text-3xl mb-2">📸</div>
+                  <p className="text-xs font-semibold text-neutral-300">
+                    Зургаа энд чирж тавих (Drag & Drop) эсвэл дарж сонгоно уу
+                  </p>
+                  <p className="text-[11px] text-neutral-500 mt-1">PNG, JPG, WEBP формат</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                Овог нэр:
+              </label>
+              <input
+                required
+                type="text"
+                placeholder="Жишээ: Б. Батболд"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                Албан тушаал / Цол:
+              </label>
+              <input
+                required
+                type="text"
+                placeholder="Жишээ: Senior Master Barber"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                Туршлага:
+              </label>
+              <input
+                type="text"
+                placeholder="Жишээ: 6 жил"
+                value={experience}
+                onChange={(e) => setExperience(e.target.value)}
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                Хийдэг гол засварууд (Таслалаар зааглана):
+              </label>
+              <input
+                type="text"
+                placeholder="Fade, Wolfcut, Perm долгион"
+                value={specialtiesText}
+                onChange={(e) => setSpecialtiesText(e.target.value)}
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-neutral-300 mb-1">
+              Гавьяа шагнал, амжилтууд (Мөр тус бүрт 1 шагнал):
+            </label>
+            <textarea
+              rows={3}
+              placeholder={"Улсын Аварга Үсчин 2024\nSeoul Barber Fest мөнгөн медаль"}
+              value={awardsText}
+              onChange={(e) => setAwardsText(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-neutral-300 mb-1">
+              Танилцуулга (Bio):
+            </label>
+            <textarea
+              rows={3}
+              placeholder="Өөрийн ур чадвар, үйлчилгээний давуу талын товч бичвэр..."
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Link
+              href="/admin"
+              className="px-5 py-2.5 bg-neutral-900 border border-neutral-800 rounded-xl text-xs text-neutral-400 hover:text-white transition"
+            >
+              Болих
+            </Link>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs rounded-xl transition disabled:opacity-50 shadow-lg"
+            >
+              {saving ? "Хадгалж байна..." : "Мэдээллийг хадгалах ✓"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
