@@ -53,7 +53,7 @@ export default function HomePage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false); 
 
   const [bookedTimes, setBookedTimes] = useState<string[]>([]);
 
