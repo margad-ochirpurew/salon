@@ -1,4 +1,4 @@
-"use client";
+\"use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -70,7 +70,7 @@ export default function HomePage() {
     return () => unsubscribe();
   }, []);
 
-  // Индекс нэхэхгүй байхаар зөвхөн barberId-аар шүүнэ
+  // Composite index шаардахгүйгээр зөвхөн barberId-аар шүүнэ
   useEffect(() => {
     if (!selectedBarber || !selectedDate) return;
 
@@ -109,7 +109,6 @@ export default function HomePage() {
 
     setSubmitting(true);
     try {
-      // Илгээх агшинд давхар захиалга байгаа эсэхийг баталгаажуулах
       const checkQ = query(
         collection(db, "appointments"),
         where("barberId", "==", selectedBarber.id)
@@ -167,9 +166,20 @@ export default function HomePage() {
     <main className="min-h-screen bg-[#0a0a0a] text-white">
       <header className="border-b border-neutral-800 bg-[#121212]/90 backdrop-blur sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="font-extrabold text-xl tracking-wider text-amber-500 flex items-center gap-2">
-            <span>✂️</span> URBAN SALON
-          </div>
+          <Link href="/" className="flex items-center gap-2.5">
+            <img
+              src="/icon.png"
+              alt="Victoria Salon Logo"
+              className="h-9 w-auto object-contain rounded-lg"
+              onError={(e) => {
+                // Хэрэв public/icon.png хараахан байхгүй бол хайчны дүрс харуулна
+                (e.target as HTMLElement).style.display = "none";
+              }}
+            />
+            <span className="font-extrabold text-lg tracking-wider text-amber-500">
+              VICTORIA SALON
+            </span>
+          </Link>
 
           <div className="flex items-center gap-3">
             <Link
